@@ -1,7 +1,9 @@
 import functools
-import hashing
+import hashlib
+import time
 
 from acdcli.api import client as ACD
+from acdcli.api.common import RequestError
 from acdcli.cache import db as DB
 from wcpan.logger import INFO, EXCEPTION, DEBUG
 import wcpan.worker as ww
@@ -18,6 +20,51 @@ class ACDController(object):
         self._network.close()
         self._db.close()
         self._worker.stop()
+
+    async def sync(self):
+        INFO('wcpan.acd') << 'syncing'
+
+        check_point = await self._db.get_checkpoint()
+        f = await self._network.get_changes(checkpoint=check_point, include_purged=bool(check_point))
+
+        try:
+            full = False
+            first = True
+
+            for changeset in await self._network.iter_changes_lines(f):
+                if changeset.reset or (full and first):
+                    await self._db.reset()
+                    full = True
+                else:
+                    await self._db.remove_purged(changeset.purged_nodes)
+
+                if changeset.nodes:
+                    await self._db.insert_nodes(changeset.nodes, partial=not full)
+
+                await self._db.update_last_sync_time()
+
+                if changeset.nodes or changeset.purged_nodes:
+                    await self._db.update_check_point(changeset.checkpoint)
+
+                first = False
+        except RequestError as e:
+            EXCEPTION('wcpan.acd') << str(e)
+            return False
+
+        INFO('wcpan.acd') << 'synced'
+
+        return True
+
+    async def trash(self, node_id):
+        await self._ensure_alive()
+        try:
+            r = await self._context.client.move_to_trash(node_id)
+            DEBUG('wcpan.acd') << r
+            await self._worker.do(functools.partial(self._acd_db.insert_node, r))
+        except RequestError as e:
+            EXCEPTION('wcpan.acd') << str(e)
+            return False
+        return True
 
 
 class ACDClientController(object):
@@ -47,49 +94,6 @@ class ACDClientController(object):
         await self._ensure_alive()
         return await self._worker.do(functools.partial(self._acd_client.move_to_trash, node_id))
 
-    async def sync(self):
-        INFO('acddl') << 'syncing'
-
-        await self._ensure_alive()
-
-        # copied from acd_cli
-
-        check_point = await self._worker.do(functools.partial(self._acd_db.KeyValueStorage.get, self._CHECKPOINT_KEY))
-
-        f = await self._acd_client.get_changes(checkpoint=check_point, include_purged=bool(check_point))
-
-        try:
-            full = False
-            first = True
-
-            for changeset in await self._acd_client.iter_changes_lines(f):
-                if changeset.reset or (full and first):
-                    await self._worker.do(self._acd_db.drop_all)
-                    await self._worker.do(self._acd_db.init)
-                    full = True
-                else:
-                    await self._worker.do(functools.partial(self._acd_db.remove_purged, changeset.purged_nodes))
-
-                if changeset.nodes:
-                    await self._worker.do(functools.partial(self._acd_db.insert_nodes, changeset.nodes, partial=not full))
-                await self._worker.do(functools.partial(self._acd_db.KeyValueStorage.update, {
-                    self._LAST_SYNC_KEY: time.time(),
-                }))
-
-                if changeset.nodes or changeset.purged_nodes:
-                    await self._worker.do(functools.partial(self._acd_db.KeyValueStorage.update, {
-                        self._CHECKPOINT_KEY: changeset.checkpoint,
-                    }))
-
-                first = False
-        except RequestError as e:
-            EXCEPTION('acddl') << str(e)
-            return False
-
-        INFO('acddl') << 'synced'
-
-        return True
-
     async def _ensure_alive(self):
         if not self._acd_client:
             self._worker.start()
@@ -99,11 +103,11 @@ class ACDClientController(object):
         self._acd_client = ACD.ACDClient(self._auth_path)
 
     def _download(self, node, local_path):
-        hasher = hashing.IncrementalHasher()
+        hasher = hashlib.md5()
         self._acd_client.download_file(node.id, node.name, str(local_path), write_callbacks=[
             hasher.update,
         ])
-        return hasher.get_result()
+        return hasher.hexdigest()
 
 
 class ACDDBController(object):
@@ -144,16 +148,28 @@ class ACDDBController(object):
         await self._ensure_alive()
         return await self._worker.do(functools.partial(self._acd_db.find_by_regex, pattern))
 
-    async def trash(self, node_id):
-        await self._ensure_alive()
-        try:
-            r = await self._context.client.move_to_trash(node_id)
-            DEBUG('acddl') << r
-            await self._worker.do(functools.partial(self._acd_db.insert_node, r))
-        except RequestError as e:
-            EXCEPTION('acddl') << str(e)
-            return False
-        return True
+    async def get_checkpoint(self):
+        return await self._worker.do(functools.partial(self._acd_db.KeyValueStorage.get, self._CHECKPOINT_KEY))
+
+    async def reset(self):
+        await self._worker.do(self._acd_db.drop_all)
+        await self._worker.do(self._acd_db.init)
+
+    async def remove_purged(self, nodes):
+        await self._worker.do(functools.partial(self._acd_db.remove_purged, nodes))
+
+    async def insert_nodes(self, nodes, partial):
+        await self._worker.do(functools.partial(self._acd_db.insert_nodes, nodes, partial=partial))
+
+    async def update_last_sync_time(self):
+        await self._worker.do(functools.partial(self._acd_db.KeyValueStorage.update, {
+            self._LAST_SYNC_KEY: time.time(),
+        }))
+
+    async def update_check_point(self, check_point):
+        await self._worker.do(functools.partial(self._acd_db.KeyValueStorage.update, {
+            self._CHECKPOINT_KEY: check_point,
+        }))
 
     async def _ensure_alive(self):
         if not self._acd_db:
