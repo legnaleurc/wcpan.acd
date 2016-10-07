@@ -56,11 +56,10 @@ class ACDController(object):
         return True
 
     async def trash(self, node_id):
-        await self._ensure_alive()
         try:
-            r = await self._context.client.move_to_trash(node_id)
+            r = await self._network.move_to_trash(node_id)
             DEBUG('wcpan.acd') << r
-            await self._worker.do(functools.partial(self._acd_db.insert_node, r))
+            await self._db.insert_nodes([r])
         except RequestError as e:
             EXCEPTION('wcpan.acd') << str(e)
             return False
@@ -158,7 +157,7 @@ class ACDDBController(object):
     async def remove_purged(self, nodes):
         await self._worker.do(functools.partial(self._acd_db.remove_purged, nodes))
 
-    async def insert_nodes(self, nodes, partial):
+    async def insert_nodes(self, nodes, partial=True):
         await self._worker.do(functools.partial(self._acd_db.insert_nodes, nodes, partial=partial))
 
     async def update_last_sync_time(self):
