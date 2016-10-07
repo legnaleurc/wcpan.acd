@@ -12,6 +12,7 @@ setup(
         ],
         install_requires=[
             'acdcli',
+            'wcpan.logger',
             'wcpan.worker',
         ],
         classifiers=[
