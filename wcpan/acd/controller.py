@@ -3,6 +3,7 @@ import hashing
 
 from acdcli.api import client as ACD
 from acdcli.cache import db as DB
+from wcpan.logger import INFO, EXCEPTION, DEBUG
 import wcpan.worker as ww
 
 
