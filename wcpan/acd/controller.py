@@ -128,7 +128,6 @@ class ACDDBController(object):
 
     _CHECKPOINT_KEY = 'checkpoint'
     _LAST_SYNC_KEY = 'last_sync'
-    _MAX_AGE = 30
 
     def __init__(self, auth_path):
         self._auth_path = auth_path
