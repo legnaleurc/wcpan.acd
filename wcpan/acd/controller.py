@@ -162,19 +162,24 @@ class ACDDBController(object):
         return await self._worker.do(functools.partial(self._acd_db.find_by_regex, pattern))
 
     async def get_checkpoint(self):
+        await self._ensure_alive()
         return await self._worker.do(functools.partial(self._acd_db.KeyValueStorage.get, self._CHECKPOINT_KEY))
 
     async def reset(self):
+        await self._ensure_alive()
         await self._worker.do(self._acd_db.drop_all)
         await self._worker.do(self._acd_db.init)
 
     async def remove_purged(self, nodes):
+        await self._ensure_alive()
         await self._worker.do(functools.partial(self._acd_db.remove_purged, nodes))
 
     async def insert_nodes(self, nodes, partial=True):
+        await self._ensure_alive()
         await self._worker.do(functools.partial(self._acd_db.insert_nodes, nodes, partial=partial))
 
     async def update_last_sync_time(self):
+        await self._ensure_alive()
         await self._worker.do(functools.partial(self._acd_db.KeyValueStorage.update, {
             self._LAST_SYNC_KEY: time.time(),
         }))
