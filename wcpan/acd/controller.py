@@ -12,14 +12,12 @@ import wcpan.worker as ww
 class ACDController(object):
 
     def __init__(self, auth_path):
-        self._worker = ww.AsyncWorker()
         self._db = ACDDBController(auth_path)
         self._network = ACDClientController(auth_path)
 
     def close(self):
         self._network.close()
         self._db.close()
-        self._worker.stop()
 
     async def sync(self):
         INFO('wcpan.acd') << 'syncing'
@@ -64,6 +62,21 @@ class ACDController(object):
             EXCEPTION('wcpan.acd') << str(e)
             return False
         return True
+
+    async def download_node(self, node, local_path):
+        return await self._network.download_node(node, local_path)
+
+    async def resolve_path(self, remote_path):
+        return await self._db.resolve_path(remote_path)
+
+    async def get_children(self, node):
+        return await self._db.get_children(node)
+
+    async def get_path(self, node):
+        return await self._db.get_path(node)
+
+    async def find_by_regex(self, pattern):
+        return await self._db.find_by_regex(pattern)
 
 
 class ACDClientController(object):
