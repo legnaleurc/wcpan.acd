@@ -131,7 +131,7 @@ class ACDDBController(object):
 
     def __init__(self, auth_path):
         self._auth_path = auth_path
-        self._worker = worker.AsyncWorker()
+        self._worker = ww.AsyncWorker()
         self._acd_db = None
 
     def close(self):
