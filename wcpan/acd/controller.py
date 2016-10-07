@@ -17,7 +17,9 @@ class ACDController(object):
 
     def close(self):
         self._network.close()
+        self._network = None
         self._db.close()
+        self._db = None
 
     async def sync(self):
         INFO('wcpan.acd') << 'syncing'
