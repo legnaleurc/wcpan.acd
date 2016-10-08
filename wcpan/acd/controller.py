@@ -130,6 +130,10 @@ class ACDClientController(object):
         await self._ensure_alive()
         return await self._worker.do(functools.partial(self._acd_client.move_to_trash, node_id))
 
+    async def upload_file(self, node, local_path):
+        await self._ensure_alive()
+        return await self._worker.do(functools.partial(self._upload, node, local_path))
+
     async def _ensure_alive(self):
         if not self._acd_client:
             self._worker.start()
@@ -141,6 +145,13 @@ class ACDClientController(object):
     def _download(self, node, local_path):
         hasher = hashlib.md5()
         self._acd_client.download_file(node.id, node.name, str(local_path), write_callbacks=[
+            hasher.update,
+        ])
+        return hasher.hexdigest()
+
+    def _upload(self, node, local_path):
+        hasher = hashlib.md5()
+        self._acd_client.upload_file(str(local_path), node.id, read_callbacks=[
             hasher.update,
         ])
         return hasher.hexdigest()
