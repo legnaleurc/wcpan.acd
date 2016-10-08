@@ -70,11 +70,12 @@ class ACDController(object):
         try:
             r = await self._network.create_directory(node, name)
             DEBUG('wcpan.acd') << r
-            await self._db.insert_nodes([r])
         except RequestError as e:
             EXCEPTION('wcpan.acd') << str(e)
             return None
-        return Node(r)
+        await self._db.insert_nodes([r])
+        r = await self._db.get_node(r['id'])
+        return r
 
     async def download_node(self, node, local_path):
         return await self._network.download_node(node, local_path)
