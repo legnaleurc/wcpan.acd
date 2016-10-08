@@ -5,6 +5,7 @@ import time
 from acdcli.api import client as ACD
 from acdcli.api.common import RequestError
 from acdcli.cache import db as DB
+from acdcli.cache.query import Node
 from wcpan.logger import INFO, EXCEPTION, DEBUG
 import wcpan.worker as ww
 
@@ -72,8 +73,8 @@ class ACDController(object):
             await self._db.insert_nodes([r])
         except RequestError as e:
             EXCEPTION('wcpan.acd') << str(e)
-            return False
-        return True
+            return None
+        return Node(r)
 
     async def download_node(self, node, local_path):
         return await self._network.download_node(node, local_path)
@@ -81,7 +82,7 @@ class ACDController(object):
     async def upload_file(self, node, local_path):
         r = await self._network.upload_file(node, local_path)
         await self._db.insert_nodes([r])
-        return r['md5']
+        return Node(r)
 
     async def resolve_path(self, remote_path):
         return await self._db.resolve_path(remote_path)
