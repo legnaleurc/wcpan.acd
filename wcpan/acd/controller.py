@@ -71,6 +71,9 @@ class ACDController(object):
     async def resolve_path(self, remote_path):
         return await self._db.resolve_path(remote_path)
 
+    async def get_child(self, node, name):
+        return await self._db.get_child(node, name)
+
     async def get_children(self, node):
         return await self._db.get_children(node)
 
@@ -141,6 +144,11 @@ class ACDDBController(object):
     async def resolve_path(self, remote_path):
         await self._ensure_alive()
         return await self._worker.do(functools.partial(self._acd_db.resolve, remote_path))
+
+    async def get_child(self, node, name):
+        await self._ensure_alive()
+        child_node = await self._worker.do(functools.partial(self._acd_db.get_child, node.id, name))
+        return child_node
 
     async def get_children(self, node):
         await self._ensure_alive()
