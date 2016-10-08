@@ -81,7 +81,7 @@ class ACDController(object):
     async def upload_file(self, node, local_path):
         r = await self._network.upload_file(node, local_path)
         await self._db.insert_nodes([r])
-        return r.md5
+        return r['md5']
 
     async def resolve_path(self, remote_path):
         return await self._db.resolve_path(remote_path)
