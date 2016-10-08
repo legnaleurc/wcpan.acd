@@ -65,6 +65,16 @@ class ACDController(object):
             return False
         return True
 
+    async def create_directory(self, node, name):
+        try:
+            r = await self._network.create_directory(node, name)
+            DEBUG('wcpan.acd') << r
+            await self._db.insert_nodes([r])
+        except RequestError as e:
+            EXCEPTION('wcpan.acd') << str(e)
+            return False
+        return True
+
     async def download_node(self, node, local_path):
         return await self._network.download_node(node, local_path)
 
@@ -94,6 +104,10 @@ class ACDClientController(object):
     def close(self):
         self._worker.stop()
         self._acd_client = None
+
+    async def create_directory(self, node, name):
+        await self._ensure_alive()
+        return await self._worker.do(functools.partial(self._acd_client.create_folder, name, node.id))
 
     async def download_node(self, node, local_path):
         await self._ensure_alive()
