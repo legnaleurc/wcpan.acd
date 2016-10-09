@@ -17,10 +17,12 @@ class ACDController(object):
         self._network = ACDClientController(auth_path)
 
     def close(self):
-        self._network.close()
-        self._network = None
-        self._db.close()
-        self._db = None
+        if self._network:
+            self._network.close()
+            self._network = None
+        if self._db:
+            self._db.close()
+            self._db = None
 
     async def sync(self):
         INFO('wcpan.acd') << 'syncing'
