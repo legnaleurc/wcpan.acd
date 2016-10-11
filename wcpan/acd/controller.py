@@ -100,6 +100,9 @@ class ACDController(object):
     async def get_path(self, node):
         return await self._db.get_path(node)
 
+    async def get_node(self, node_id):
+        return await self._db.get_node(node_id)
+
     async def find_by_regex(self, pattern):
         return await self._db.find_by_regex(pattern)
 
