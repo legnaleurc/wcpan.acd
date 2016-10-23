@@ -61,7 +61,6 @@ class ACDController(object):
     async def trash(self, node_id):
         try:
             r = await self._network.move_to_trash(node_id)
-            DEBUG('wcpan.acd') << r
             await self._db.insert_nodes([r])
         except RequestError as e:
             EXCEPTION('wcpan.acd') << str(e)
@@ -71,7 +70,6 @@ class ACDController(object):
     async def create_directory(self, node, name):
         try:
             r = await self._network.create_directory(node, name)
-            DEBUG('wcpan.acd') << r
         except RequestError as e:
             EXCEPTION('wcpan.acd') << str(e)
             return None
