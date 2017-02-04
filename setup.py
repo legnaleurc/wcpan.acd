@@ -12,6 +12,7 @@ setup(
         ],
         install_requires=[
             'acdcli',
+            'tornado',
             'wcpan.logger',
             'wcpan.worker',
         ],
