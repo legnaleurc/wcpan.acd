@@ -1,11 +1,13 @@
 import functools
 import hashlib
+import multiprocessing as mp
 import time
 
 from acdcli.api import client as ACD
 from acdcli.api.common import RequestError
 from acdcli.cache import db as DB
 from acdcli.cache.query import Node
+from tornado import locks as tl
 from wcpan.logger import INFO, EXCEPTION, DEBUG
 import wcpan.worker as ww
 
@@ -158,78 +160,202 @@ class ACDClientController(object):
 
 class ACDDBController(object):
 
+    def __init__(self, auth_path):
+        self._pool = DatabaseWorkerPool(auth_path)
+
+    def close(self):
+        self._pool.close()
+
+    async def resolve_path(self, remote_path):
+        async with self._pool.raii() as db:
+            rv = await db.resolve_path(remote_path)
+            return rv
+
+    async def get_child(self, node, name):
+        async with self._pool.raii() as db:
+            rv = await db.get_child(node, name)
+            return rv
+
+    async def get_children(self, node):
+        async with self._pool.raii() as db:
+            rv = await db.get_children(node)
+            return rv
+
+    async def get_path(self, node):
+        async with self._pool.raii() as db:
+            rv = await db.get_path(node)
+            return rv
+
+    async def get_node(self, node_id):
+        async with self._pool.raii() as db:
+            rv = await db.get_node(node_id)
+            return rv
+
+    async def find_by_regex(self, pattern):
+        async with self._pool.raii() as db:
+            rv = await db.find_by_regex(pattern)
+            return rv
+
+    async def get_checkpoint(self):
+        async with self._pool.raii() as db:
+            rv = await db.get_checkpoint()
+            return rv
+
+    async def reset(self):
+        async with self._pool.raii() as db:
+            await db.reset()
+
+    async def remove_purged(self, nodes):
+        async with self._pool.raii() as db:
+            await db.remove_purged(nodes)
+
+    async def insert_nodes(self, nodes, partial=True):
+        async with self._pool.raii() as db:
+            await db.insert_nodes(nodes, partial)
+
+    async def update_last_sync_time(self):
+        async with self._pool.raii() as db:
+            await db.update_last_sync_time()
+
+    async def update_check_point(self, check_point):
+        async with self._pool.raii() as db:
+            await db.update_check_point(check_point)
+
+
+class DatabaseWorkerPool(object):
+
+    def __init__(self, auth_path):
+        self._auth_path = auth_path
+        self._idle = []
+        self._busy = set()
+        self._max = mp.cpu_count()
+        self._lock = tl.Condition()
+
+    def close(self):
+        for worker in self._idle:
+            worker.close()
+        for worker in self._busy:
+            worker.close()
+
+    async def get_worker(self):
+        while True:
+            worker = self._try_get_or_create()
+            if worker:
+                self._busy.add(worker)
+                return worker
+
+            # no worker available, wait for idle
+            await self._lock.wait()
+
+    def recycle(self, worker):
+        self._busy.remove(worker)
+        self._idle.append(worker)
+        self._lock.notify()
+
+    def raii(self):
+        return DatabaseWorkerRecycler(self)
+
+    def _try_get_or_create(self):
+        if self._idle:
+            worker = self._idle.pop(0)
+            return worker
+
+        if len(self._busy) < self._max:
+            worker = DatabaseWorker(self._auth_path)
+            return worker
+
+        return None
+
+
+class DatabaseWorkerRecycler(object):
+
+    def __init__(self, pool):
+        self._pool = pool
+        self._worker = None
+
+    async def __aenter__(self):
+        self._worker = await self._pool.get_worker()
+        return self._worker
+
+    async def __aexit__(self, *args, **kwargs):
+        self._pool.recycle(self._worker)
+
+
+class DatabaseWorker(object):
+
     _CHECKPOINT_KEY = 'checkpoint'
     _LAST_SYNC_KEY = 'last_sync'
 
     def __init__(self, auth_path):
         self._auth_path = auth_path
         self._worker = ww.AsyncWorker()
-        self._acd_db = None
+        self._db = None
 
     def close(self):
         self._worker.stop()
-        self._acd_db = None
+        self._db = None
 
     async def resolve_path(self, remote_path):
         await self._ensure_alive()
-        return await self._worker.do(functools.partial(self._acd_db.resolve, remote_path))
+        return await self._worker.do(functools.partial(self._db.resolve, remote_path))
 
     async def get_child(self, node, name):
         await self._ensure_alive()
-        child_node = await self._worker.do(functools.partial(self._acd_db.get_child, node.id, name))
+        child_node = await self._worker.do(functools.partial(self._db.get_child, node.id, name))
         return child_node
 
     async def get_children(self, node):
         await self._ensure_alive()
-        folders, files = await self._worker.do(functools.partial(self._acd_db.list_children, node.id))
+        folders, files = await self._worker.do(functools.partial(self._db.list_children, node.id))
         children = folders + files
         return children
 
     async def get_path(self, node):
         await self._ensure_alive()
-        dirname = await self._worker.do(functools.partial(self._acd_db.first_path, node.id))
+        dirname = await self._worker.do(functools.partial(self._db.first_path, node.id))
         return dirname + node.name
 
     async def get_node(self, node_id):
         await self._ensure_alive()
-        return await self._worker.do(functools.partial(self._acd_db.get_node, node_id))
+        return await self._worker.do(functools.partial(self._db.get_node, node_id))
 
     async def find_by_regex(self, pattern):
         await self._ensure_alive()
-        return await self._worker.do(functools.partial(self._acd_db.find_by_regex, pattern))
+        return await self._worker.do(functools.partial(self._db.find_by_regex, pattern))
 
     async def get_checkpoint(self):
         await self._ensure_alive()
-        return await self._worker.do(functools.partial(self._acd_db.KeyValueStorage.get, self._CHECKPOINT_KEY))
+        return await self._worker.do(functools.partial(self._db.KeyValueStorage.get, self._CHECKPOINT_KEY))
 
     async def reset(self):
         await self._ensure_alive()
-        await self._worker.do(self._acd_db.drop_all)
-        await self._worker.do(self._acd_db.init)
+        await self._worker.do(self._db.drop_all)
+        await self._worker.do(self._db.init)
 
     async def remove_purged(self, nodes):
         await self._ensure_alive()
-        await self._worker.do(functools.partial(self._acd_db.remove_purged, nodes))
+        await self._worker.do(functools.partial(self._db.remove_purged, nodes))
 
     async def insert_nodes(self, nodes, partial=True):
         await self._ensure_alive()
-        await self._worker.do(functools.partial(self._acd_db.insert_nodes, nodes, partial=partial))
+        await self._worker.do(functools.partial(self._db.insert_nodes, nodes, partial=partial))
 
     async def update_last_sync_time(self):
         await self._ensure_alive()
-        await self._worker.do(functools.partial(self._acd_db.KeyValueStorage.update, {
+        await self._worker.do(functools.partial(self._db.KeyValueStorage.update, {
             self._LAST_SYNC_KEY: time.time(),
         }))
 
     async def update_check_point(self, check_point):
-        await self._worker.do(functools.partial(self._acd_db.KeyValueStorage.update, {
+        await self._worker.do(functools.partial(self._db.KeyValueStorage.update, {
             self._CHECKPOINT_KEY: check_point,
         }))
 
     async def _ensure_alive(self):
-        if not self._acd_db:
+        if not self._db:
             self._worker.start()
             await self._worker.do(self._create_db)
 
     def _create_db(self):
-        self._acd_db = DB.NodeCache(self._auth_path)
+        assert self._db is None
+        self._db = DB.NodeCache(self._auth_path)
