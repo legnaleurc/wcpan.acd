@@ -161,6 +161,9 @@ class ACDClientController(object):
 class ACDDBController(object):
 
     def __init__(self, auth_path):
+        # acd_cli uses thread local storage to isolate sqlite3 connection for
+        # each thread, so it would be better to have individual database object
+        # in each worker
         self._pool = DatabaseWorkerPool(auth_path)
 
     def close(self):
@@ -280,12 +283,16 @@ class DatabaseWorkerRecycler(object):
 
 class DatabaseWorker(object):
 
+    # magic strings from acd_cli
     _CHECKPOINT_KEY = 'checkpoint'
     _LAST_SYNC_KEY = 'last_sync'
 
     def __init__(self, auth_path):
         self._auth_path = auth_path
         self._worker = ww.AsyncWorker()
+        # not only for lazy initialization, but also preventing thread local
+        # storage mess, i.e. ONLY ININTIALIZE DATABASE IN THE WORKER THREAD!
+        # and all operation MUST be done in the worker thread as well.
         self._db = None
 
     def close(self):
