@@ -1,3 +1,4 @@
 acdcli
+tornado
 wcpan.logger
 wcpan.worker
