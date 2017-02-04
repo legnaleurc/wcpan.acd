@@ -1,4 +1,4 @@
-import functools
+from functools import partial as ftp
 import hashlib
 import multiprocessing as mp
 import time
@@ -120,15 +120,15 @@ class ACDClientController(object):
 
     async def create_directory(self, node, name):
         await self._ensure_alive()
-        return await self._worker.do(functools.partial(self._acd_client.create_folder, name, node.id))
+        return await self._worker.do(ftp(self._acd_client.create_folder, name, node.id))
 
     async def download_node(self, node, local_path):
         await self._ensure_alive()
-        return await self._worker.do(functools.partial(self._download, node, local_path))
+        return await self._worker.do(ftp(self._download, node, local_path))
 
     async def get_changes(self, checkpoint, include_purged):
         await self._ensure_alive()
-        return await self._worker.do(functools.partial(self._acd_client.get_changes, checkpoint=checkpoint, include_purged=include_purged, silent=True, file=None))
+        return await self._worker.do(ftp(self._acd_client.get_changes, checkpoint=checkpoint, include_purged=include_purged, silent=True, file=None))
 
     async def iter_changes_lines(self, changes):
         await self._ensure_alive()
@@ -136,11 +136,11 @@ class ACDClientController(object):
 
     async def move_to_trash(self, node_id):
         await self._ensure_alive()
-        return await self._worker.do(functools.partial(self._acd_client.move_to_trash, node_id))
+        return await self._worker.do(ftp(self._acd_client.move_to_trash, node_id))
 
     async def upload_file(self, node, local_path):
         await self._ensure_alive()
-        return await self._worker.do(functools.partial(self._acd_client.upload_file, str(local_path), node.id))
+        return await self._worker.do(ftp(self._acd_client.upload_file, str(local_path), node.id))
 
     async def _ensure_alive(self):
         if not self._acd_client:
@@ -294,35 +294,35 @@ class DatabaseWorker(object):
 
     async def resolve_path(self, remote_path):
         await self._ensure_alive()
-        return await self._worker.do(functools.partial(self._db.resolve, remote_path))
+        return await self._worker.do(ftp(self._db.resolve, remote_path))
 
     async def get_child(self, node, name):
         await self._ensure_alive()
-        child_node = await self._worker.do(functools.partial(self._db.get_child, node.id, name))
+        child_node = await self._worker.do(ftp(self._db.get_child, node.id, name))
         return child_node
 
     async def get_children(self, node):
         await self._ensure_alive()
-        folders, files = await self._worker.do(functools.partial(self._db.list_children, node.id))
+        folders, files = await self._worker.do(ftp(self._db.list_children, node.id))
         children = folders + files
         return children
 
     async def get_path(self, node):
         await self._ensure_alive()
-        dirname = await self._worker.do(functools.partial(self._db.first_path, node.id))
+        dirname = await self._worker.do(ftp(self._db.first_path, node.id))
         return dirname + node.name
 
     async def get_node(self, node_id):
         await self._ensure_alive()
-        return await self._worker.do(functools.partial(self._db.get_node, node_id))
+        return await self._worker.do(ftp(self._db.get_node, node_id))
 
     async def find_by_regex(self, pattern):
         await self._ensure_alive()
-        return await self._worker.do(functools.partial(self._db.find_by_regex, pattern))
+        return await self._worker.do(ftp(self._db.find_by_regex, pattern))
 
     async def get_checkpoint(self):
         await self._ensure_alive()
-        return await self._worker.do(functools.partial(self._db.KeyValueStorage.get, self._CHECKPOINT_KEY))
+        return await self._worker.do(ftp(self._db.KeyValueStorage.get, self._CHECKPOINT_KEY))
 
     async def reset(self):
         await self._ensure_alive()
@@ -331,20 +331,20 @@ class DatabaseWorker(object):
 
     async def remove_purged(self, nodes):
         await self._ensure_alive()
-        await self._worker.do(functools.partial(self._db.remove_purged, nodes))
+        await self._worker.do(ftp(self._db.remove_purged, nodes))
 
     async def insert_nodes(self, nodes, partial=True):
         await self._ensure_alive()
-        await self._worker.do(functools.partial(self._db.insert_nodes, nodes, partial=partial))
+        await self._worker.do(ftp(self._db.insert_nodes, nodes, partial=partial))
 
     async def update_last_sync_time(self):
         await self._ensure_alive()
-        await self._worker.do(functools.partial(self._db.KeyValueStorage.update, {
+        await self._worker.do(ftp(self._db.KeyValueStorage.update, {
             self._LAST_SYNC_KEY: time.time(),
         }))
 
     async def update_check_point(self, check_point):
-        await self._worker.do(functools.partial(self._db.KeyValueStorage.update, {
+        await self._worker.do(ftp(self._db.KeyValueStorage.update, {
             self._CHECKPOINT_KEY: check_point,
         }))
 
