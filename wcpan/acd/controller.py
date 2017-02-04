@@ -17,6 +17,7 @@ import wcpan.worker as ww
 MD5Hash = bytes
 CheckPoint = Any
 NodeID = str
+ChangedLines = Generator['ChangeSet', None, None]
 
 
 class ACDController(object):
@@ -37,7 +38,8 @@ class ACDController(object):
         INFO('wcpan.acd') << 'syncing'
 
         check_point = await self._db.get_checkpoint()
-        f = await self._network.get_changes(checkpoint=check_point, include_purged=bool(check_point))
+        f = await self._network.get_changes(checkpoint=check_point,
+                                            include_purged=bool(check_point))
 
         try:
             full = False
@@ -51,7 +53,8 @@ class ACDController(object):
                     await self._db.remove_purged(changeset.purged_nodes)
 
                 if changeset.nodes:
-                    await self._db.insert_nodes(changeset.nodes, partial=not full)
+                    await self._db.insert_nodes(changeset.nodes,
+                                                partial=not full)
 
                 await self._db.update_last_sync_time()
 
@@ -76,7 +79,8 @@ class ACDController(object):
             return False
         return True
 
-    async def create_directory(self, node: Node, name: str) -> Awaitable[Optional[Node]]:
+    async def create_directory(self, node: Node,
+                               name: str) -> Awaitable[Optional[Node]]:
         try:
             r = await self._network.create_directory(node, name)
         except RequestError as e:
@@ -86,10 +90,12 @@ class ACDController(object):
         r = await self._db.get_node(r['id'])
         return r
 
-    async def download_node(self, node: Node, local_path: str) -> Awaitable[MD5Hash]:
+    async def download_node(self, node: Node,
+                            local_path: str) -> Awaitable[MD5Hash]:
         return await self._network.download_node(node, local_path)
 
-    async def upload_file(self, node: Node, local_path: str) -> Awaitable[Optional[Node]]:
+    async def upload_file(self, node: Node,
+                          local_path: str) -> Awaitable[Optional[Node]]:
         r = await self._network.upload_file(node, local_path)
         await self._db.insert_nodes([r])
         r = await self._db.get_node(r['id'])
@@ -98,7 +104,8 @@ class ACDController(object):
     async def resolve_path(self, remote_path: str) -> Awaitable[Optional[Node]]:
         return await self._db.resolve_path(remote_path)
 
-    async def get_child(self, node: Node, name: str) -> Awaitable[Optional[Node]]:
+    async def get_child(self, node: Node,
+                        name: str) -> Awaitable[Optional[Node]]:
         return await self._db.get_child(node, name)
 
     async def get_children(self, node: Node) -> Awaitable[List[Node]]:
@@ -125,29 +132,45 @@ class ACDClientController(object):
         self._worker.stop()
         self._link = None
 
-    async def create_directory(self, node: Node, name: str) -> Awaitable[dict]:
+    async def create_directory(self, node: Node,
+                               name: str) -> Awaitable[Dict[str, Any]]:
         await self._ensure_alive()
-        return await self._worker.do(ftp(self._link.create_folder, name, node.id))
+        fn = ftp(self._link.create_folder, name, node.id)
+        rv = await self._worker.do(fn)
+        return rv
 
-    async def download_node(self, node: Node, local_path: str) -> Awaitable[MD5Hash]:
+    async def download_node(self, node: Node,
+                            local_path: str) -> Awaitable[MD5Hash]:
         await self._ensure_alive()
-        return await self._worker.do(ftp(self._download, node, local_path))
+        rv = await self._worker.do(ftp(self._download, node, local_path))
+        return rv
 
-    async def get_changes(self, checkpoint: CheckPoint, include_purged: bool) -> Awaitable[Stream]:
+    async def get_changes(self, checkpoint: CheckPoint,
+                          include_purged: bool) -> Awaitable[Stream]:
         await self._ensure_alive()
-        return await self._worker.do(ftp(self._link.get_changes, checkpoint=checkpoint, include_purged=include_purged, silent=True, file=None))
+        fn = ftp(self._link.get_changes, checkpoint=checkpoint,
+                 include_purged=include_purged, silent=True, file=None)
+        rv = await self._worker.do(fn)
+        return rv
 
-    async def iter_changes_lines(self, changes: Stream) -> Awaitable[Generator['ChangeSet', None, None]]:
+    async def iter_changes_lines(self,
+                                 changes: Stream) -> Awaitable[ChangedLines]:
         await self._ensure_alive()
-        return self._link._iter_changes_lines(changes)
+        rv = self._link._iter_changes_lines(changes)
+        return rv
 
-    async def move_to_trash(self, node_id: NodeID) -> Awaitable[dict]:
+    async def move_to_trash(self, node_id: NodeID) -> Awaitable[Dict[str, Any]]:
         await self._ensure_alive()
-        return await self._worker.do(ftp(self._link.move_to_trash, node_id))
+        fn = ftp(self._link.move_to_trash, node_id)
+        rv = await self._worker.do(fn)
+        return rv
 
-    async def upload_file(self, node: Node, local_path: str) -> Awaitable[dict]:
+    async def upload_file(self, node: Node,
+                          local_path: str) -> Awaitable[Dict[str, Any]]:
         await self._ensure_alive()
-        return await self._worker.do(ftp(self._link.upload_file, str(local_path), node.id))
+        fn = ftp(self._link.upload_file, str(local_path), node.id)
+        rv = await self._worker.do(fn)
+        return rv
 
     async def _ensure_alive(self) -> Awaitable[None]:
         if not self._link:
@@ -159,9 +182,11 @@ class ACDClientController(object):
 
     def _download(self, node: Node, local_path: str) -> MD5Hash:
         hasher = hashlib.md5()
-        self._link.download_file(node.id, node.name, str(local_path), write_callbacks=[
+        cb = [
             hasher.update,
-        ])
+        ]
+        self._link.download_file(node.id, node.name, str(local_path),
+                                 write_callbacks=cb)
         return hasher.hexdigest()
 
 
@@ -181,7 +206,8 @@ class ACDDBController(object):
             rv = await db.resolve_path(remote_path)
             return rv
 
-    async def get_child(self, node: Node, name: str) -> Awaitable[Optional[Node]]:
+    async def get_child(self, node: Node,
+                        name: str) -> Awaitable[Optional[Node]]:
         async with self._pool.raii() as db:
             rv = await db.get_child(node, name)
             return rv
@@ -219,7 +245,8 @@ class ACDDBController(object):
         async with self._pool.raii() as db:
             await db.remove_purged(nodes)
 
-    async def insert_nodes(self, nodes: List[Dict[str, Any]], partial: bool = True) -> Awaitable[None]:
+    async def insert_nodes(self, nodes: List[Dict[str, Any]],
+                           partial: bool = True) -> Awaitable[None]:
         async with self._pool.raii() as db:
             await db.insert_nodes(nodes, partial)
 
@@ -227,7 +254,8 @@ class ACDDBController(object):
         async with self._pool.raii() as db:
             await db.update_last_sync_time()
 
-    async def update_check_point(self, check_point: CheckPoint) -> Awaitable[None]:
+    async def update_check_point(self,
+                                 check_point: CheckPoint) -> Awaitable[None]:
         async with self._pool.raii() as db:
             await db.update_check_point(check_point)
 
@@ -308,35 +336,47 @@ class DatabaseWorker(object):
 
     async def resolve_path(self, remote_path: str) -> Awaitable[Optional[Node]]:
         await self._ensure_alive()
-        return await self._worker.do(ftp(self._db.resolve, remote_path))
+        fn = ftp(self._db.resolve, remote_path)
+        rv = await self._worker.do(fn)
+        return rv
 
-    async def get_child(self, node: Node, name: str) -> Awaitable[Optional[Node]]:
+    async def get_child(self, node: Node,
+                        name: str) -> Awaitable[Optional[Node]]:
         await self._ensure_alive()
-        child_node = await self._worker.do(ftp(self._db.get_child, node.id, name))
+        fn = ftp(self._db.get_child, node.id, name)
+        child_node = await self._worker.do(fn)
         return child_node
 
     async def get_children(self, node: Node) -> Awaitable[List[Node]]:
         await self._ensure_alive()
-        folders, files = await self._worker.do(ftp(self._db.list_children, node.id))
+        fn = ftp(self._db.list_children, node.id)
+        folders, files = await self._worker.do(fn)
         children = folders + files
         return children
 
     async def get_path(self, node: Node) -> Awaitable[str]:
         await self._ensure_alive()
-        dirname = await self._worker.do(ftp(self._db.first_path, node.id))
+        fn = ftp(self._db.first_path, node.id)
+        dirname = await self._worker.do(fn)
         return dirname + node.name
 
     async def get_node(self, node_id: NodeID) -> Awaitable[Optional[Node]]:
         await self._ensure_alive()
-        return await self._worker.do(ftp(self._db.get_node, node_id))
+        fn = ftp(self._db.get_node, node_id)
+        rv = await self._worker.do(fn)
+        return rv
 
     async def find_by_regex(self, pattern: str) -> Awaitable[List[Node]]:
         await self._ensure_alive()
-        return await self._worker.do(ftp(self._db.find_by_regex, pattern))
+        fn = ftp(self._db.find_by_regex, pattern)
+        rv = await self._worker.do(fn)
+        return rv
 
     async def get_checkpoint(self) -> Awaitable[CheckPoint]:
         await self._ensure_alive()
-        return await self._worker.do(ftp(self._db.KeyValueStorage.get, self._CHECKPOINT_KEY))
+        fn = ftp(self._db.KeyValueStorage.get, self._CHECKPOINT_KEY)
+        rv = await self._worker.do(fn)
+        return rv
 
     async def reset(self) -> Awaitable[None]:
         await self._ensure_alive()
@@ -345,22 +385,28 @@ class DatabaseWorker(object):
 
     async def remove_purged(self, nodes: List[NodeID]) -> Awaitable[None]:
         await self._ensure_alive()
-        await self._worker.do(ftp(self._db.remove_purged, nodes))
+        fn = ftp(self._db.remove_purged, nodes)
+        await self._worker.do(fn)
 
-    async def insert_nodes(self, nodes: List[Dict[str, Any]], partial: bool = True):
+    async def insert_nodes(self, nodes: List[Dict[str, Any]],
+                           partial: bool = True) -> Awaitable[None]:
         await self._ensure_alive()
-        await self._worker.do(ftp(self._db.insert_nodes, nodes, partial=partial))
+        fn = ftp(self._db.insert_nodes, nodes, partial=partial)
+        await self._worker.do(fn)
 
     async def update_last_sync_time(self) -> Awaitable[None]:
         await self._ensure_alive()
-        await self._worker.do(ftp(self._db.KeyValueStorage.update, {
+        fn = ftp(self._db.KeyValueStorage.update, {
             self._LAST_SYNC_KEY: time.time(),
-        }))
+        })
+        await self._worker.do(fn)
 
-    async def update_check_point(self, check_point: CheckPoint) -> Awaitable[None]:
-        await self._worker.do(ftp(self._db.KeyValueStorage.update, {
+    async def update_check_point(self,
+                                 check_point: CheckPoint) -> Awaitable[None]:
+        fn = ftp(self._db.KeyValueStorage.update, {
             self._CHECKPOINT_KEY: check_point,
-        }))
+        })
+        await self._worker.do(fn)
 
     async def _ensure_alive(self) -> Awaitable[None]:
         if not self._db:
