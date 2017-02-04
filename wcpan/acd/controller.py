@@ -112,15 +112,15 @@ class ACDClientController(object):
     def __init__(self, auth_path):
         self._auth_path = auth_path
         self._worker = ww.AsyncWorker()
-        self._acd_client = None
+        self._link = None
 
     def close(self):
         self._worker.stop()
-        self._acd_client = None
+        self._link = None
 
     async def create_directory(self, node, name):
         await self._ensure_alive()
-        return await self._worker.do(ftp(self._acd_client.create_folder, name, node.id))
+        return await self._worker.do(ftp(self._link.create_folder, name, node.id))
 
     async def download_node(self, node, local_path):
         await self._ensure_alive()
@@ -128,31 +128,31 @@ class ACDClientController(object):
 
     async def get_changes(self, checkpoint, include_purged):
         await self._ensure_alive()
-        return await self._worker.do(ftp(self._acd_client.get_changes, checkpoint=checkpoint, include_purged=include_purged, silent=True, file=None))
+        return await self._worker.do(ftp(self._link.get_changes, checkpoint=checkpoint, include_purged=include_purged, silent=True, file=None))
 
     async def iter_changes_lines(self, changes):
         await self._ensure_alive()
-        return self._acd_client._iter_changes_lines(changes)
+        return self._link._iter_changes_lines(changes)
 
     async def move_to_trash(self, node_id):
         await self._ensure_alive()
-        return await self._worker.do(ftp(self._acd_client.move_to_trash, node_id))
+        return await self._worker.do(ftp(self._link.move_to_trash, node_id))
 
     async def upload_file(self, node, local_path):
         await self._ensure_alive()
-        return await self._worker.do(ftp(self._acd_client.upload_file, str(local_path), node.id))
+        return await self._worker.do(ftp(self._link.upload_file, str(local_path), node.id))
 
     async def _ensure_alive(self):
-        if not self._acd_client:
+        if not self._link:
             self._worker.start()
             await self._worker.do(self._create_client)
 
     def _create_client(self):
-        self._acd_client = ACD.ACDClient(self._auth_path)
+        self._link = ACD.ACDClient(self._auth_path)
 
     def _download(self, node, local_path):
         hasher = hashlib.md5()
-        self._acd_client.download_file(node.id, node.name, str(local_path), write_callbacks=[
+        self._link.download_file(node.id, node.name, str(local_path), write_callbacks=[
             hasher.update,
         ])
         return hasher.hexdigest()
