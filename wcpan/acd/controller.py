@@ -178,6 +178,7 @@ class ACDClientController(object):
             await self._worker.do(self._create_client)
 
     def _create_client(self) -> None:
+        assert self._link is None
         self._link = ACD.ACDClient(self._auth_path)
 
     def _download(self, node: Node, local_path: str) -> MD5Hash:
