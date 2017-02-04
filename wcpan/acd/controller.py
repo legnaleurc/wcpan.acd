@@ -256,15 +256,12 @@ class DatabaseWorkerPool(object):
         return DatabaseWorkerRecycler(self)
 
     def _try_get_or_create(self):
+        worker = None
         if self._idle:
             worker = self._idle.pop(0)
-            return worker
-
-        if len(self._busy) < self._max:
+        elif len(self._busy) < self._max:
             worker = DatabaseWorker(self._auth_path)
-            return worker
-
-        return None
+        return worker
 
 
 class DatabaseWorkerRecycler(object):
