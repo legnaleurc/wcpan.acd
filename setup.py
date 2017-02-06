@@ -6,6 +6,7 @@ setup(
         version='1.1.0',
         author='Wei-Cheng Pan',
         author_email='legnaleurc@gmail.com',
+        description='An Amazon Cloud Drive API tool.',
         url='https://github.com/legnaleurc/wcpan.acd',
         packages=[
             'wcpan.acd',
