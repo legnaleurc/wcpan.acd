@@ -142,7 +142,8 @@ class ACDClientController(object):
     async def download_node(self, node: Node,
                             local_path: str) -> Awaitable[MD5Hash]:
         await self._ensure_alive()
-        rv = await self._worker.do(ftp(self._download, node, local_path))
+        fn = ftp(self._download, node, local_path)
+        rv = await self._worker.do(fn)
         return rv
 
     async def get_changes(self, checkpoint: CheckPoint,
