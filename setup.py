@@ -3,7 +3,7 @@ from setuptools import setup
 
 setup(
         name='wcpan.acd',
-        version='1.1.0',
+        version='1.2.0',
         author='Wei-Cheng Pan',
         author_email='legnaleurc@gmail.com',
         description='An Amazon Cloud Drive API tool.',
